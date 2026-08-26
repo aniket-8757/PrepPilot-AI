@@ -13,35 +13,52 @@ export const useInterview = () => {
         throw new Error("useInterview must be used within an InterviewProvider")
     }
 
-    const { loading, setLoading, report, setReport, reports, setReports } = context
+    const { loading, setLoading, error, setError, report, setReport, reports, setReports } = context
 
     const generateReport = async ({ jobDescription, selfDescription, resumeFile }) => {
         setLoading(true)
+        setError(null)
         let response = null
         try {
+            if (!jobDescription.trim()) {
+                throw new Error("Please provide a job description.")
+            }
+            if (!selfDescription.trim() && !resumeFile) {
+                throw new Error("Please upload a PDF resume or provide a self-description.")
+            }
+            if (resumeFile && (resumeFile.type !== "application/pdf" || resumeFile.size > 3 * 1024 * 1024)) {
+                throw new Error("Please upload a PDF resume smaller than 3MB.")
+            }
             response = await generateInterviewReport({ jobDescription, selfDescription, resumeFile })
             setReport(response.interviewReport)
         } catch (error) {
             console.log(error)
+            setError(error.code === "ECONNABORTED"
+                ? "The request took too long. Please try again."
+                : error.response?.data?.message || error.message || "Unable to generate the interview plan.")
         } finally {
             setLoading(false)
         }
 
-        return response.interviewReport
+        return response?.interviewReport ?? null
     }
 
     const getReportById = async (interviewId) => {
         setLoading(true)
+        setError(null)
         let response = null
         try {
             response = await getInterviewReportById(interviewId)
             setReport(response.interviewReport)
         } catch (error) {
-            console.log(error)
+            console.error(error)
+            setError(error.code === "ECONNABORTED"
+                ? "Loading took too long. Please refresh and try again."
+                : error.response?.data?.message || "Unable to load this interview plan.")
         } finally {
             setLoading(false)
         }
-        return response.interviewReport
+        return response?.interviewReport ?? null
     }
 
     const getReports = async () => {
@@ -61,18 +78,33 @@ export const useInterview = () => {
 
     const getResumePdf = async (interviewReportId) => {
         setLoading(true)
+        setError(null)
         let response = null
         try {
             response = await generateResumePdf({ interviewReportId })
-            const url = window.URL.createObjectURL(new Blob([ response ], { type: "application/pdf" }))
+            const url = window.URL.createObjectURL(response)
             const link = document.createElement("a")
             link.href = url
-            link.setAttribute("download", `resume_${interviewReportId}.pdf`)
+            link.download = `resume_${interviewReportId}.pdf`
             document.body.appendChild(link)
             link.click()
+            link.remove()
+            window.setTimeout(() => window.URL.revokeObjectURL(url), 1000)
         }
         catch (error) {
-            console.log(error)
+            console.error(error)
+            let message = "Unable to download the resume."
+            if (error.response?.data instanceof Blob) {
+                try {
+                    const body = JSON.parse(await error.response.data.text())
+                    message = body.message || message
+                } catch {
+                    // Keep the fallback message when the server response is not JSON.
+                }
+            } else {
+                message = error.response?.data?.message || message
+            }
+            setError(message)
         } finally {
             setLoading(false)
         }
@@ -86,6 +118,6 @@ export const useInterview = () => {
         }
     }, [ interviewId ])
 
-    return { loading, report, reports, generateReport, getReportById, getReports, getResumePdf }
+    return { loading, error, report, reports, generateReport, getReportById, getReports, getResumePdf }
 
 }

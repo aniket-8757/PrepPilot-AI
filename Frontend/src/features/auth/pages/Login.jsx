@@ -10,11 +10,18 @@ const Login = () => {
 
     const [ email, setEmail ] = useState("")
     const [ password, setPassword ] = useState("")
+    const [ error, setError ] = useState("")
 
     const handleSubmit = async (e) => {
         e.preventDefault()
-        await handleLogin({email,password})
-        navigate('/')
+        setError("")
+
+        try {
+            await handleLogin({email,password})
+            navigate('/')
+        } catch (err) {
+            setError(err.response?.data?.message || "Unable to log in. Please try again.")
+        }
     }
 
     if(loading){
@@ -26,6 +33,7 @@ const Login = () => {
         <main>
             <div className="form-container">
                 <h1>Login</h1>
+                {error && <p role="alert">{error}</p>}
                 <form onSubmit={handleSubmit}>
                     <div className="input-group">
                         <label htmlFor="email">Email</label>
